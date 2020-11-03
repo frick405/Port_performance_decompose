@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-import FinanceDataReader as fdr
 import matplotlib.pyplot as plt
+import data_loader
 
 from typing import *
 
@@ -97,32 +97,18 @@ class DGTW:
 
 if __name__ == '__main__':
 
-    # port_return = pd.DataFrame(np.random.random(100) / 100)
-    # bm_return = pd.DataFrame(np.random.random(100) / 100)
-    #
-    # security_ret = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T
-    # security_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
-    # bm_ret = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T
-    # bm_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
-    #
-    # decomposer = PortDecomposeWithCAPM(port_return, bm_return, 0.0001)
-    # dgtw = DGTW(security_ret, bm_ret, security_weight , bm_weight)
-    # print(dgtw.dgtw())
-    #
-    # # print(decomposer.treynor_mazuy())
-    # # print(decomposer.hm_model())
-
     tick_ls = ['005930', '000660', '068270', '035420']
-    price_df = pd.concat([fdr.DataReader(col, start='2018-01-01')['Close'] for col in tick_ls], 1)
-    price_df.columns = tick_ls
 
-    return_df = price_df.pct_change()
+    loader = data_loader.DataLoader(tick_ls, '2018-01-01')
+    return_df = loader.get_securty_return()
 
-    weight_df = pd.concat([pd.DataFrame(np.random.random(return_df.shape[0])) for i in range(return_df.shape[1])], 1)
-    weight_df = weight_df.apply(lambda x: x / x.sum(), 1)
+    weight_df = loader.weight_loader(return_df.shape[0], return_df.shape[1])
     weight_df.index = return_df.index
+    bm_ret = loader.load_bm_return('KS200')
 
-    bm_ret = fdr.DataReader('KS200', start='2018-01-01')[['Change']]
+    print(return_df)
+    print(weight_df)
+    print(bm_ret)
 
     dgtw_cls = DGTW(return_df, weight_df, bm_ret)
     decomposed_ret_df = dgtw_cls.dgtw()
