@@ -6,14 +6,21 @@ from typing import *
 
 class PortDecomposeWithCAPM:
 
-    def __init__(self, port_return:pd.DataFrame, bm_return:pd.DataFrame, rf) -> pd.DataFrame:
+    def __init__(self, port_return:pd.DataFrame, bm_return:pd.DataFrame, rf:pd.DataFrame) -> pd.DataFrame:
+        '''
+        :param port_return: pd.DataFrame
+        :param bm_return: pd.DataFrame
+        :param rf: pd.DataFrame
+        :description: Frequency of input data is daily now... but will be added frequency adjustment
+        '''
         self.port_return = port_return
         self.bm_return = bm_return
         self.rf = rf
 
-    def treynor_mazuy(self):
+    def treynor_mazuy(self) -> pd.DataFrame:
         '''
-        :return:
+        :return: pd.DataFrame
+        :description: According to Treynor-Mazuy Model, report regression coefficient and significance probability
         '''
 
         excess_port_ret = self.port_return - self.rf
@@ -36,7 +43,11 @@ class PortDecomposeWithCAPM:
             print('No ability to timing')
         return res_df
 
-    def hm_model(self): # 감마에 대해서 하락장 베타와 상승장 베타를 따로 추정해서 베타 간의 차이가 유의한지 검정하는 것을 확인해야함
+    def hm_model(self)-> pd.DataFrame: # 감마에 대해서 하락장 베타와 상승장 베타를 따로 추정해서 베타 간의 차이가 유의한지 검정하는 것을 확인해야함
+        '''
+        :return: pd.DataFrame
+        :description: According to Henriksson-Merton Model, report regression coefficient and significance probability
+        '''
 
         excess_port_ret = self.port_return - self.rf
         excess_mkt_ret = self.bm_return - self.rf
@@ -58,21 +69,30 @@ class PortDecomposeWithCAPM:
         return res_df
 
 class DGTW:
-    def __init__(self, port_univ_return, bm_univ_return, port_weight, bm_weight):
+    def __init__(self, port_univ_return:pd.DataFrame, bm_univ_return:pd.DataFrame, port_weight:pd.DataFrame, bm_weight:pd.DataFrame):
 
         self.port_univ_return = port_univ_return
-        self.port_weight = bm_weight
+        self.port_weight = port_weight
 
         self.bm_univ_return = bm_univ_return
         self.bm_weight = bm_weight
 
-    def dgtw(self): # t 검정 추가 및 내부 구조 변경 필요
+    def dgtw(self) -> pd.DataFrame: # daily_rebalancing
+        '''
+        :return: pd.DataFrame
+        :description: Decompose portfolio data to security selection, timing, average return.
+        '''
+        bm_return = (self.bm_weight.shift(1) * self.bm_univ_return).sum(1).squeeze()
+        bm_return_arr = np.repeat(bm_return.values.reshape(-1, 1), repeats=self.port_univ_return.shape[1], axis=1)
+        bm_return_arr = pd.DataFrame(bm_return_arr, index=self.port_univ_return.index)
+        cs_measure = (self.port_weight.shift(1).values * (bm_return_arr)).sum(1)
+        ct_measure = ((self.port_weight.shift(1).values * bm_return_arr) - (self.port_weight.shift(2).values * bm_return_arr.shift(1))).sum(1)
+        as_measure = (self.port_weight.shift(2).values * bm_return_arr.shift(1)).sum(1)
 
-        cs_measure = (self.port_weight.shift(1) * (self.port_univ_return - self.bm_univ_return)).sum(1)
-        ct_measure = ((self.port_weight.shift(1) * self.port_univ_return.shift(1)) - (self.port_weight.shift(13) * self.port_univ_return.shift(13))).sum(1)
-        as_measure = (self.port_weight.shift(13) * self.port_univ_return).sum(1)
+        decomposed_return = pd.DataFrame([cs_measure, ct_measure, as_measure]).T
+        decomposed_return.columns = ['CS', 'CT', 'AS']
 
-        return pd.concat([cs_measure, ct_measure, as_measure], 1)
+        return decomposed_return
 
 if __name__ == '__main__':
 
@@ -85,10 +105,8 @@ if __name__ == '__main__':
     bm_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
 
     decomposer = PortDecomposeWithCAPM(port_return, bm_return, 0.0001)
-    dgtw = DGTW(security_ret, security_weight, bm_ret, bm_weight)
+    dgtw = DGTW(security_ret, bm_ret, security_weight , bm_weight)
     print(dgtw.dgtw())
-
-
 
     # print(decomposer.treynor_mazuy())
     # print(decomposer.hm_model())
