@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+import FinanceDataReader as fdr
+import matplotlib.pyplot as plt
 
 from typing import *
 
@@ -69,44 +71,60 @@ class PortDecomposeWithCAPM:
         return res_df
 
 class DGTW:
-    def __init__(self, port_univ_return:pd.DataFrame, bm_univ_return:pd.DataFrame, port_weight:pd.DataFrame, bm_weight:pd.DataFrame):
+    def __init__(self, port_univ_return:pd.DataFrame, port_weight:pd.DataFrame, bm_return_df:pd.DataFrame):
 
         self.port_univ_return = port_univ_return
         self.port_weight = port_weight
 
-        self.bm_univ_return = bm_univ_return
-        self.bm_weight = bm_weight
+        self.bm_return_df = bm_return_df
 
     def dgtw(self) -> pd.DataFrame: # daily_rebalancing
         '''
         :return: pd.DataFrame
         :description: Decompose portfolio data to security selection, timing, average return.
         '''
-        bm_return = (self.bm_weight.shift(1) * self.bm_univ_return).sum(1).squeeze()
-        bm_return_arr = np.repeat(bm_return.values.reshape(-1, 1), repeats=self.port_univ_return.shape[1], axis=1)
-        bm_return_arr = pd.DataFrame(bm_return_arr, index=self.port_univ_return.index)
-        cs_measure = (self.port_weight.shift(1).values * (bm_return_arr)).sum(1)
-        ct_measure = ((self.port_weight.shift(1).values * bm_return_arr) - (self.port_weight.shift(2).values * bm_return_arr.shift(1))).sum(1)
-        as_measure = (self.port_weight.shift(2).values * bm_return_arr.shift(1)).sum(1)
+        bm_return_arr = pd.DataFrame(np.repeat(self.bm_return_df.values, repeats=self.port_univ_return.shape[1], axis=1))
+
+        cs_measure = (self.port_weight.shift(1).values * (bm_return_arr.values)).sum(1)
+        ct_measure = ((self.port_weight.shift(1).values * bm_return_arr.values) - (self.port_weight.shift(2).values * bm_return_arr.shift(1))).sum(1)
+        as_measure = (self.port_weight.shift(2).values * bm_return_arr.shift(1).values).sum(1)
 
         decomposed_return = pd.DataFrame([cs_measure, ct_measure, as_measure]).T
+        decomposed_return.index = self.port_univ_return.index
         decomposed_return.columns = ['CS', 'CT', 'AS']
 
         return decomposed_return
 
 if __name__ == '__main__':
 
-    port_return = pd.DataFrame(np.random.random(100) / 100)
-    bm_return = pd.DataFrame(np.random.random(100) / 100)
+    # port_return = pd.DataFrame(np.random.random(100) / 100)
+    # bm_return = pd.DataFrame(np.random.random(100) / 100)
+    #
+    # security_ret = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T
+    # security_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
+    # bm_ret = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T
+    # bm_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
+    #
+    # decomposer = PortDecomposeWithCAPM(port_return, bm_return, 0.0001)
+    # dgtw = DGTW(security_ret, bm_ret, security_weight , bm_weight)
+    # print(dgtw.dgtw())
+    #
+    # # print(decomposer.treynor_mazuy())
+    # # print(decomposer.hm_model())
 
-    security_ret = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T
-    security_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
-    bm_ret = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T
-    bm_weight = pd.DataFrame([np.random.random(100) / 100 for i in range(5)]).T.apply(lambda x: x / x.sum(), 1)
+    tick_ls = ['005930', '000660', '068270', '035420']
+    price_df = pd.concat([fdr.DataReader(col, start='2018-01-01')['Close'] for col in tick_ls], 1)
+    price_df.columns = tick_ls
 
-    decomposer = PortDecomposeWithCAPM(port_return, bm_return, 0.0001)
-    dgtw = DGTW(security_ret, bm_ret, security_weight , bm_weight)
-    print(dgtw.dgtw())
+    return_df = price_df.pct_change()
 
-    # print(decomposer.treynor_mazuy())
-    # print(decomposer.hm_model())
+    weight_df = pd.concat([pd.DataFrame(np.random.random(return_df.shape[0])) for i in range(return_df.shape[1])], 1)
+    weight_df = weight_df.apply(lambda x: x / x.sum(), 1)
+    weight_df.index = return_df.index
+
+    bm_ret = fdr.DataReader('KS200', start='2018-01-01')[['Change']]
+
+    dgtw_cls = DGTW(return_df, weight_df, bm_ret)
+    decomposed_ret_df = dgtw_cls.dgtw()
+    (1 + decomposed_ret_df).cumprod().plot(figsize=(12, 6))
+    plt.show()
